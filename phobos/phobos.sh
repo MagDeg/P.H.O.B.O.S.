@@ -44,6 +44,7 @@ source "$LIB_DIR/backup.sh"
 source "$LIB_DIR/restore.sh"
 source "$LIB_DIR/container.sh"
 source "$LIB_DIR/scheduler.sh"
+source "$LIB_DIR/integration.sh"
 
 # case statement to handle phobos-commands
 case "$1" in 
@@ -82,6 +83,28 @@ case "$1" in
             echo "Backup not found: $2"
             exit 1
         fi
+        ;;
+    drive)
+        case "$2" in
+            enable)
+                drive_enable
+                ;;
+            disable)
+                drive_disable
+                ;;
+            status)
+                drive_status
+                ;;
+            *)
+                echo "Usage: phobos drive {enable|disable|status}"
+                ;;
+        esac
+        ;;
+    drives)
+        list_drives
+        ;;
+    drive_trigger)
+        drive_trigger
         ;;
     schedule)
         case "$2" in    

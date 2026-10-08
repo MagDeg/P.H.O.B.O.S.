@@ -4,23 +4,38 @@ schedule_add() {
     local job_name="$1" # identifier for the job
     local source="$2"
     local destination="$3"
-    local interval="$4" # intervall in which job shall be run
+    local interval="weekly" # parameter for backup interval
     local drive="" # optional parameter, for now empty
+    local trigger="timer" # default trigger for backup
 
     # checking whether the required parameters were provided
-    if [[ -z "$job_name" || -z "$source" || -z "$destination" || -z "$interval" ]]; then
-        echo "Usage: phobos schedule add <name> <source> <destination> <interval> [--drive <label>]"
+    if [[ -z "$job_name" || -z "$source" || -z "$destination" ]]; then
+        echo "Usage: phobos schedule add <name> <source> <destination> [--interval <interval>] [--drive <label>] [--trigger <timer|drive>]"
         return 1
     fi
 
     # checking optional parameters
     # skipping the mandatory parameters, so only the optional parameter is left
-    shift 4
+    shift 3
 
     # $# means number of remaining arguments
     # -gt means greater than
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            # if the first param equals --interval
+            --interval) 
+                # checking if interval is provided
+                if [[ -z "$2" ]]; then
+                    echo "Missing interval."
+                    return 1
+                fi
+
+                #setting local variable
+                interval="$2"
+                # moving to next parameter
+                shift 2
+                ;;
+
             # if the first param equals --drive
             --drive)
                 # checking if drive name is provided
@@ -31,10 +46,22 @@ schedule_add() {
 
                 # setting local variable
                 drive="$2"
-                # skipping last parameters to end loop
+                # moving to next parameters
                 shift 2
                 ;;
+            #if param equals --trigger
+            --trigger)
+                # checking if trigger is provided
+                if [[ -z "$2" ]]; then
+                    echo "Missing trigger."
+                    return 1
+                fi
 
+                #setting local variable 
+                trigger="$2"
+                #moving to next parameters
+                shift 2
+                ;;
             *)
                 echo "Unknown option: $1"
                 return 1
@@ -59,6 +86,29 @@ schedule_add() {
             return 1
             ;;
     esac
+
+    # checking supported triggers
+    case "$trigger" in
+        timer|drive)
+            ;;
+        *)
+            echo "Invalid trigger."
+            echo "Allowed: timer, drive"
+            return 1
+            ;;
+    esac
+
+    #drive trigger requires a drive
+    if [[ "$trigger" == "drive" && "$destination" = /* ]]; then
+        echo "Destination must be relative when using --trigger drive."
+        return 1
+    fi
+
+    # timer trigger must not use a drive
+    if [[ "$trigger" == "timer" && -n "$drive" ]]; then
+        echo "--drive can only be used with --trigger drive."
+        return 1
+    fi
 
     # creating the PHOBOS directories
     # -p creats all parent-directories if they are not already existing
@@ -95,9 +145,10 @@ schedule_add() {
         printf 'DESTINATION=%q\n' "$destination"
         printf 'INTERVAL=%q\n' "$interval"
         printf 'DRIVE=%q\n' "$drive"
+        printf 'TRIGGER=%q\n' "$trigger"
     } > "$job_file"
 
-    echo "Scheduled backup created: $job_name ($interval)"
+    echo "Scheduled backup created: $job_name ($trigger, $interval)"
 
     # -n menas string is not empty
     if [[ -n "$drive" ]]; then
@@ -126,9 +177,15 @@ schedule_run() {
         [[ -e "$job" ]] || continue
 
         # clearing variables, to make shure they are not remaining from previous job
-        unset NAME SOURCE DESTINATION INTERVAL DRIVE
+        unset NAME SOURCE DESTINATION INTERVAL DRIVE TRIGGER
 
         source "$job"
+
+        # drive triggered jobs are handled seperately
+        if [[ "$TRIGGER" == "drive" ]]; then 
+            continue
+        fi
+
 
         # defining path to state file
         local state_file="$state_dir/$NAME.state"
@@ -137,6 +194,7 @@ schedule_run() {
 
         # checking for state in state file, if it exists loading
         if [[ -f "$state_file" ]]; then
+            unset LAST_SUCCESS
             source "$state_file"
             # if varibale is empty or unset use value (0), if not use variable
             # getting time of last successfull backup
@@ -151,6 +209,10 @@ schedule_run() {
             daily) interval_seconds=86400 ;;
             weekly) interval_seconds=604800 ;;
             monthly) interval_seconds=2592000 ;;
+            *)
+                echo "Invalid interval for job: $NAME"
+                continue
+                ;;
         esac
 
         # checking if intervall is reached, meaning a backup need to be done
@@ -316,6 +378,14 @@ schedule_list() {
         echo "Source:      $SOURCE"
         echo "Destination: $DESTINATION"
         echo "Interval:    $INTERVAL"
+        echo "Trigger:     $TRIGGER"
+
+        if [[ -n "$DRIVE" ]]; then
+            echo "Drive:       $DRIVE"
+        else
+            echo "Drive:       none"
+        fi
+
         echo ""
 
     done
@@ -323,4 +393,87 @@ schedule_list() {
     if (( found == 0 )); then
         echo "No scheduled backups found."
     fi
+}
+
+find_drive() {
+    local drive_label="$1" # defining parameters as local variables
+
+    # checking if a label was gives as param
+    if [[ -z "$drive_label" ]]; then
+        return 1
+    fi
+
+    local mountpoint
+
+    # findmnt gets informations about mounted filesystems
+    # -rn raw output without table format & without headlines
+    # -s search source with this LABEL
+    # -o TARGET only return mountpoint
+    mountpoint=$(findmnt -rn -S "LABEL=$drive_label" -o TARGET)
+
+    # checking if drive was found
+    if [[ -z "$mountpoint" ]]; then
+        return 1
+    fi
+
+    printf '%s\n' "$mountpoint"
+}
+
+drive_trigger() {
+
+    local jobs_dir="$HOME/.phobos/jobs" # path to job-configurations
+    local state_dir="$HOME/.phobos/state" 
+
+    # create directories, if they are not already existing
+    mkdir -p "$jobs_dir"
+    mkdir -p "$state_dir"
+
+    # search through all jobs
+    for job in "$jobs_dir"/*.conf; do
+        # if jopb-file does not exist, jump to next job-file
+        [[ -e "$job" ]] || continue
+
+        # clear old variables
+        unset NAME SOURCE DESTINATION INTERVAL DRIVE TRIGGER
+
+        # load job configurations
+        source "$job"
+
+        # only drive triggered jobs are handled here
+        if [[ "$TRIGGER" != "drive" ]]; then
+            continue
+        fi
+
+        # checking if a drive was given as param
+        if [[ -z "$DRIVE" ]]; then
+            echo "Drive trigger without drive configured: $NAME"
+            continue
+        fi
+
+        local mountpoint
+
+        # getting mountpoint for drive label
+        mountpoint=$(find_drive "$DRIVE")
+
+        # if there is no mountpoint, the drive is not available or notr plugged in 
+        if [[ -z "$mountpoint" ]]; then
+            continue
+        fi
+
+        # creating target path
+        local target="$mountpoint/$DESTINATION"
+
+        echo "Drive detected: $DRIVE"
+        echo "Scheduled backup: $NAME"
+        echo "Destination: $target"
+
+        # start backup
+        if save_folder "$SOURCE" "$target"; then
+            local state_file="$state_dir/$NAME.state"
+            printf "LAST_SUCCESS=%s\n" "$(date +%s)" > "$state_file"
+        else
+            echo "Backup failed: $NAME"
+        fi
+
+    done
 }

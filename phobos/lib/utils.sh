@@ -161,3 +161,18 @@ log_backup() {
         "$duration" \
         >> "$HOME/.phobos/phobos.log"
 }
+
+list_drives() {
+    echo "Connected drives"
+    echo "----------------"
+
+    lsblk -pnro NAME,LABEL,FSTYPE,SIZE,MOUNTPOINT,TYPE |
+        awk '$6 == "part" && ($2 != "" || $5 != "") {
+            printf "Device:     %s\n", $1
+            printf "Label:      %s\n", ($2 != "" ? $2 : "-")
+            printf "Filesystem: %s\n", ($3 != "" ? $3 : "-")
+            printf "Size:       %s\n", $4
+            printf "Mountpoint: %s\n", ($5 != "" ? $5 : "-")
+            printf "\n"
+        }'
+}

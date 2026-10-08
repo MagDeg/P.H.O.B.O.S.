@@ -1,5 +1,5 @@
 # const variable for versioning
-readonly VERSION="0.0.1"
+readonly VERSION="0.0.2"
 
 # contains file types that are already compressed, so there is no need to compress them again
 readonly NO_COMPRESS_EXTENSIONS=(
