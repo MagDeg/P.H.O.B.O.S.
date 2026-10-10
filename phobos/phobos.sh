@@ -46,6 +46,14 @@ source "$LIB_DIR/container.sh"
 source "$LIB_DIR/scheduler.sh"
 source "$LIB_DIR/integration.sh"
 
+source "$LIB_DIR/logger/storage.sh"
+source "$LIB_DIR/logger/logger.sh"
+source "$LIB_DIR/logger/security.sh"
+source "$LIB_DIR/logger/collector.sh"
+source "$LIB_DIR/logger/detection.sh"
+source "$LIB_DIR/logger/integration.sh"
+
+
 # case statement to handle phobos-commands
 case "$1" in 
     --version)
@@ -84,6 +92,42 @@ case "$1" in
             exit 1
         fi
         ;;
+    logger)
+        case "$2" in
+            enable)
+                logger_enable
+                ;;
+
+            disable)
+                logger_disable
+                ;;
+            status)
+                logger_status
+                ;;
+            verify)
+                logger_verify_chain
+                ;;
+            show)
+                logger_show
+                ;;
+
+            test)
+                logger_event \
+                    "SYSTEM" \
+                    "CONFIG_CHANGED" \
+                    "$USER" \
+                    "SUCCESS" \
+                    "INFO" \
+                    --details "manual_test"
+
+                echo "Logger test event created."
+                ;;
+
+            *)
+                echo "Usage: phobos logger {enable|disable|test}"
+                ;;
+        esac
+        ;;
     drive)
         case "$2" in
             enable)
@@ -105,6 +149,9 @@ case "$1" in
         ;;
     drive_trigger)
         drive_trigger
+        ;;
+    collect-drive)
+        logger_collect_drive "$3" "$4" "$5"
         ;;
     schedule)
         case "$2" in    
