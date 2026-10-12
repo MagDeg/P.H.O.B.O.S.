@@ -14,6 +14,12 @@ readonly LOGGER_UDEV_HELPER="${LIB_DIR:-/usr/local/lib/phobos}/logger/logger_ude
 readonly LOGGER_JOURNAL_UNIT="/etc/systemd/system/phobos-logger-journal.service"
 readonly LOGGER_JOURNAL_HELPER="${LIB_DIR:-/usr/local/lib/phobos}/logger/logger_journal.sh"
 
+# file-operation (auditd) integration paths (used by lifecycle.sh).  
+readonly LOGGER_AUDIT_RULES="/etc/audit/rules.d/50-phobos-file.rules"  # where logger enable writes audit rules
+readonly LOGGER_AUDIT_UNIT="/etc/systemd/system/phobos-logger-audit.service" # path of systemd unit that streams audot records into logger
+readonly LOGGER_AUDIT_HELPER="${LIB_DIR:-/usr/local/lib/phobos}/logger/logger_audit.sh" #absolute path of entry point logger_audit.sh
+readonly LOGGER_AUDIT_LOG="/var/log/audit/audit.log" #raw auditd log the collector streams (tail -F)  # [NEW]
+
 logger_storage_init() {
     # creating diredctory for logger file
     # || on error, do {...}

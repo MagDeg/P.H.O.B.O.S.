@@ -528,16 +528,28 @@ primarily for testing):
 Collectors normalise raw system input into schema events. Each collector
 returns `0` when it recognizes the input and `1` otherwise.
 
-Two input channels exist:
+Three input channels exist:
 
 - **journal** — raw log lines (authentication, sudo, ...)
 - **udev** — device events read from udev environment variables
+- **audit** — Linux Audit records (state-changing file operations) grouped by
+  their `audit(<sec>.<ms>:<serial>)` id
 
-Collectors live in `collector.sh`:
+Collectors live in `collector/`, one file per channel; `collector.sh` is the
+entry point and sources them all:
 
-- journal: `logger_collect_auth`, `logger_collect_sudo`, routed by
-  `logger_collect_journal_line` (first match wins)
-- udev: `logger_collect_udev` / `logger_collect_drive`
+- `collector/collector_drive.sh` — `logger_collect_udev` / `logger_collect_drive`
+- `collector/collector_auth.sh` — `logger_collect_auth` (logins/logouts, sshd)
+- `collector/collector_sudo.sh` — `logger_collect_sudo`
+- `collector/collector_journal.sh` — `logger_collect_journal_line` (router; first
+  match wins)
+- `collector/collector_audit.sh` — `logger_collect_audit_block` maps a coalesced
+  audit block to a single `FILE` event (`CREATE`/`DELETE`/`MOVE`/`RENAME`/
+  `MODIFY`). Source/target are taken from `PATH` records by `nametype`
+  (`PARENT` records name a directory, never the file), so `openat` on an
+  existing file (nametype `NORMAL`) produces no event. Actors are limited to
+  real users (`auid>=1000`) and the sudo helper's own file operations are
+  ignored.
 
 Each channel has an entry point that feeds the collectors:
 
@@ -547,6 +559,13 @@ Each channel has an entry point that feeds the collectors:
   be fed manually with `phobos logger ingest "<line>"`.
 - udev: `logger_udev.sh` is run by the udev rule installed by
   `phobos logger enable`.
+- audit: `logger_audit.sh` reads records from stdin, coalesces them by audit
+  id, and flushes each block. The `phobos-logger-audit.service` unit (installed
+  by `phobos logger enable`) runs
+  `tail -F -n 0 /var/log/audit/audit.log | logger_audit.sh`. Rules are installed
+  to `/etc/audit/rules.d/50-phobos-file.rules` and loaded with `augenrules --load`.
+  A single block can be fed manually with `phobos logger ingest-audit "<block>"`.
 
-Adding a new source currently requires extending `collector.sh` (and the
-router in `logger_collect_journal_line` for journal sources).
+Adding a new source means adding a file under `collector/` and sourcing it from
+`collector.sh` (and, for journal sources, adding it to the router in
+`collector_journal.sh`).

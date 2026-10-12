@@ -62,8 +62,8 @@ case "$1" in
     save_file)
         save_file "$2" "$3"
         ;; 
-    check_dependancies)
-        check_dependancies
+    check_dependencies)
+        check_dependencies
         ;;
     save)
         if [[ -d "$2" ]]; then
@@ -115,6 +115,10 @@ case "$1" in
                 logger_collect_journal_line "$3"
                 ;;
 
+            ingest-audit)  
+                logger_collect_audit_block "$3"  
+                ;;
+
             test)
                 logger_event \
                     "SYSTEM" \
@@ -128,7 +132,7 @@ case "$1" in
                 ;;
 
             *)
-                echo "Usage: phobos logger {enable|disable|status|verify|show|ingest|test}"
+                echo "Usage: phobos logger {enable|disable|status|verify|show|ingest|ingest-audit|test}"
                 ;;
         esac
         ;;

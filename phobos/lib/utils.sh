@@ -120,6 +120,13 @@ check_dependencies() {
             exit 1
         fi
     fi
+
+    # file-operation logging needs auditd   
+    # command -v augenrules : checks if tool exists
+    # &> /dev/null - silences output
+    if ! command -v augenrules &> /dev/null; then  
+        echo "Optional: install auditd for file-operation logging." 
+    fi  
 }
 
 # returns version of phobos system
