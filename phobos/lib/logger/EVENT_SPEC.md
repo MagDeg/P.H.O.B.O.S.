@@ -48,9 +48,12 @@ Every event must contain the following fields.
 
 Every event receives a unique identifier.
 
+The ID is 16 random bytes rendered as 32 lowercase hexadecimal
+characters (generated with `openssl rand -hex 16`).
+
 Example:
 
-id=01K7EXAMPLE123
+id=9f2c1a7b40d84e5f8a6c3b1d0e2f4a57
 
 The ID must uniquely identify one event.
 
@@ -335,7 +338,7 @@ If no additional information exists:
 
 ## File Copy
 
-id=01K7EXAMPLE001
+id=9f2c1a7b40d84e5f8a6c3b1d0e2f4a01
 timestamp=2026-10-08T20:15:32+02:00
 category=FILE
 action=COPY
@@ -351,7 +354,7 @@ details=-
 
 ## Failed Login
 
-id=01K7EXAMPLE002
+id=9f2c1a7b40d84e5f8a6c3b1d0e2f4a02
 timestamp=2026-10-08T20:16:02+02:00
 category=AUTH
 action=LOGIN_FAILED
@@ -367,7 +370,7 @@ details=invalid_password
 
 ## Drive Connected
 
-id=01K7EXAMPLE003
+id=9f2c1a7b40d84e5f8a6c3b1d0e2f4a03
 timestamp=2026-10-08T20:20:14+02:00
 category=DRIVE
 action=CONNECT
@@ -488,3 +491,62 @@ for future versions:
 - machine-learning-based anomaly detection
 - additional alert levels
 - event correlation
+
+---
+
+# 19. Storage & Integrity
+
+Events are appended to a single log file (`events.log`). Each event is
+followed by a line with the SHA-256 hash of the previous chain hash
+concatenated with the event body, and then a `---` separator.
+
+```
+id=...
+timestamp=...
+...
+details=-
+event_hash=<sha256>
+---
+```
+
+Because every hash depends on the previous one, altering, removing or
+reordering any earlier event invalidates all later hashes. The final hash
+is also stored in `chain.hash`. `phobos logger verify` recomputes the whole
+chain and reports the first inconsistency it finds.
+
+Storage locations (overridable via the `LOGGER_DIR` environment variable,
+primarily for testing):
+
+- `LOGGER_DIR` — `/var/lib/phobos/logger` (mode `700`)
+- `events.log` — the event log (mode `600`)
+- `chain.hash` — current chain tip (mode `600`)
+
+---
+
+# 20. Collectors
+
+Collectors normalise raw system input into schema events. Each collector
+returns `0` when it recognizes the input and `1` otherwise.
+
+Two input channels exist:
+
+- **journal** — raw log lines (authentication, sudo, ...)
+- **udev** — device events read from udev environment variables
+
+Collectors live in `collector.sh`:
+
+- journal: `logger_collect_auth`, `logger_collect_sudo`, routed by
+  `logger_collect_journal_line` (first match wins)
+- udev: `logger_collect_udev` / `logger_collect_drive`
+
+Each channel has an entry point that feeds the collectors:
+
+- journal: `logger_journal.sh` reads lines from stdin. The
+  `phobos-logger-journal.service` unit installed by `phobos logger enable`
+  runs `journalctl -f -o short -n 0 | logger_journal.sh`. A single line can
+  be fed manually with `phobos logger ingest "<line>"`.
+- udev: `logger_udev.sh` is run by the udev rule installed by
+  `phobos logger enable`.
+
+Adding a new source currently requires extending `collector.sh` (and the
+router in `logger_collect_journal_line` for journal sources).

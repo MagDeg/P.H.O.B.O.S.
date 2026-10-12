@@ -48,10 +48,10 @@ source "$LIB_DIR/integration.sh"
 
 source "$LIB_DIR/logger/storage.sh"
 source "$LIB_DIR/logger/logger.sh"
-source "$LIB_DIR/logger/security.sh"
+source "$LIB_DIR/logger/validation.sh"
 source "$LIB_DIR/logger/collector.sh"
-source "$LIB_DIR/logger/detection.sh"
-source "$LIB_DIR/logger/integration.sh"
+source "$LIB_DIR/logger/lifecycle.sh"
+source "$LIB_DIR/logger/display.sh"
 
 
 # case statement to handle phobos-commands
@@ -111,6 +111,10 @@ case "$1" in
                 logger_show
                 ;;
 
+            ingest)
+                logger_collect_journal_line "$3"
+                ;;
+
             test)
                 logger_event \
                     "SYSTEM" \
@@ -124,7 +128,7 @@ case "$1" in
                 ;;
 
             *)
-                echo "Usage: phobos logger {enable|disable|test}"
+                echo "Usage: phobos logger {enable|disable|status|verify|show|ingest|test}"
                 ;;
         esac
         ;;
@@ -151,7 +155,7 @@ case "$1" in
         drive_trigger
         ;;
     collect-drive)
-        logger_collect_drive "$3" "$4" "$5"
+        logger_collect_drive "$2" "$3" "$4" "$5"
         ;;
     schedule)
         case "$2" in    

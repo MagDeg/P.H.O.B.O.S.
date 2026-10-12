@@ -166,6 +166,11 @@ list_drives() {
     echo "Connected drives"
     echo "----------------"
 
+    # -p : print full device paths
+    # -n : no header
+    # -r : raw (no tree chars)+
+    # -o ... : select columns
+    # awk filter keeps only rows where field 6 = 'part' and either field 2 or field 5is non-empty
     lsblk -pnro NAME,LABEL,FSTYPE,SIZE,MOUNTPOINT,TYPE |
         awk '$6 == "part" && ($2 != "" || $5 != "") {
             printf "Device:     %s\n", $1

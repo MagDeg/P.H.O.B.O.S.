@@ -1,152 +1,214 @@
-#!/bin/bash 
+#!/bin/bash
 
+# if LOGGER_DIR is unset/empty, set default; := makes it overridable 
+: "${LOGGER_DIR:=/var/lib/phobos/logger}"
+readonly LOGGER_DIR
+readonly EVENT_LOG="$LOGGER_DIR/events.log"
+readonly LOGGER_CHAIN_FILE="$LOGGER_DIR/chain.hash"
 
-# defining path to directory, where logger shall store relevant actions
-LOGGER_DIR="/var/lib/phobos/logger"
-# single event file 
-EVENT_LOG="$LOGGER_DIR/events.log"
-# file to store previous hash value for generation of next hash
-LOGGER_CHAIN_FILE="$LOGGER_DIR/chain.hash"
+# udev integration paths (used by lifecycle.sh).
+readonly LOGGER_UDEV_RULES="/etc/udev/rules.d/98-phobos-logger.rules"
+readonly LOGGER_UDEV_HELPER="${LIB_DIR:-/usr/local/lib/phobos}/logger/logger_udev.sh"
+
+# journal integration paths (used by lifecycle.sh).
+readonly LOGGER_JOURNAL_UNIT="/etc/systemd/system/phobos-logger-journal.service"
+readonly LOGGER_JOURNAL_HELPER="${LIB_DIR:-/usr/local/lib/phobos}/logger/logger_journal.sh"
 
 logger_storage_init() {
+    # creating diredctory for logger file
+    # || on error, do {...}
     mkdir -p "$LOGGER_DIR" || {
-        echo "Logger storage initialization failed."
+        logger_error "Logger storage initialization failed."
         return 1
     }
 
+    # make dir private, so only owner can read, write, execute
     chmod 700 "$LOGGER_DIR" || {
-        echo "Failed to secure logger directory."
+        logger_error "Failed to secure logger directory."
         return 1
     }
 
+    # creating log-file
     touch "$EVENT_LOG" || {
-        echo "Failed to create event log."
+        logger_error "Failed to create event log."
         return 1
     }
 
+    # make file private, so only owner can read, write
     chmod 600 "$EVENT_LOG" || {
-        echo "Failed to secure event log."
+        logger_error "Failed to secure event log."
         return 1
     }
 
+    # creating file for chain-hash
     touch "$LOGGER_CHAIN_FILE" || {
-        echo "Failed to create chain file."
+        logger_error "Failed to create chain file."
         return 1
     }
 
+    # make file private, so only owner can read, write
     chmod 600 "$LOGGER_CHAIN_FILE" || {
-        echo "Failed to secure chain file."
+        logger_error "Failed to secure chain file."
         return 1
     }
 
     return 0
 }
 
+# appends one validated event to log-file and advances hash-chain.
 logger_store_event() {
+    # variable for event
+    # will be given as multiline string
     local event="$1"
 
-    if ! logger_storage_init; then
-        echo "Logger storage initialization failed."
-        return 1
-    fi
+    # making shure all relevant files exist, on error return 1
+    logger_storage_init || return 1
 
     local previous_hash=""
-
+    # reading hash-file to get previous hash, if it exists
     if [[ -f "$LOGGER_CHAIN_FILE" ]]; then
+        # $(...) strips trailing newline
         previous_hash=$(cat "$LOGGER_CHAIN_FILE")
     fi
 
     local event_hash
+    # generating new hash with previous hash and event
+    # awk extracts only hash
     event_hash=$(printf '%s%s' "$previous_hash" "$event" |
         sha256sum |
         awk '{print $1}')
 
+    # writing values into log-file
     {
+        #writing event into log-file
         printf '%s\n' "$event"
+        # appending hash-value
         printf 'event_hash=%s\n' "$event_hash"
-        printf '%s\n' "---"
+        # adding seperator, for easy extracting of events
+        printf -- '---\n'
     } >> "$EVENT_LOG" || {
-        echo "Failed to write logger event."
+        # on error: 
+        logger_error "Failed to write logger event."
         return 1
     }
 
+    # overwriting (>) hash-file
     printf '%s\n' "$event_hash" > "$LOGGER_CHAIN_FILE" || {
-        echo "Failed to update logger chain."
+        logger_error "Failed to update logger chain."
         return 1
     }
+
+    return 0
 }
 
-logger_verify_chain() {
-    if [[ "$EUID" -ne 0 ]]; then
-        echo "This command requires root privileges."
-        echo "Run: sudo phobos logger verify"
-        return 1
-    fi
 
-    if [[ ! -f "$EVENT_LOG" ]]; then
-        echo "Event log not found."
-        return 1
-    fi
-
-    if [[ ! -f "$LOGGER_CHAIN_FILE" ]]; then
-        echo "Chain file not found."
-        return 1
-    fi
-
-    local previous_hash=""
+# simply walks through events and uses given callback function on each event
+logger_chain_walk() {
+    local logfile="$1"
+    local callback="$2"
+    local line
     local event=""
     local stored_hash=""
-    local calculated_hash=""
-    local event_count=0
-    local line
 
+    # reading log file line by line
     while IFS= read -r line; do
-
+        # if seperator reached
         if [[ "$line" == "---" ]]; then
+            # setting global variables
+            # Note: assigning a name without keyword local in bash, creates shell-global variable
+            LOGGER_EVENT_BODY="$event"
+            LOGGER_EVENT_HASH="$stored_hash"
 
-            calculated_hash=$(printf '%s%s' "$previous_hash" "$event" |
-                sha256sum |
-                awk '{print $1}')
+            # calling "$callback"
+            # if it returns non-zero, return $? stops iteration and propagates that status
+            "$callback" || return $?
 
-            if [[ "$calculated_hash" != "$stored_hash" ]]; then
-                echo "Integrity chain: INVALID"
-                echo "Failed at event: $((event_count + 1))"
-                echo "Reason: event hash mismatch"
-                return 1
-            fi
-
-            previous_hash="$stored_hash"
+            # resetting local variables
             event=""
             stored_hash=""
-            ((event_count++))
-
+        # if line starts with event_hash
         elif [[ "$line" == event_hash=* ]]; then
+            # string line into variable (stripped of prefix)
             stored_hash="${line#event_hash=}"
-
+        # if line is inside of event entry
         else
+            # if event is not empty, prefixing newline
             if [[ -n "$event" ]]; then
                 event+=$'\n'
             fi
-
+            # if event is empty, simply adding line
             event+="$line"
         fi
+    done < "$logfile"
 
-    done < "$EVENT_LOG"
+    return 0
+}
 
-    local chain_hash
-    chain_hash=$(cat "$LOGGER_CHAIN_FILE")
+# callback for logger_chain_check(): recomputes hash for one event and
+# compares it with stored one
+_logger_chain_check_event() {
+    local calculated_hash
+    # calculating hash from previous hash and event
+    # note: for the first event hash is calculates by using "" and the event itself
+    calculated_hash=$(printf '%s%s' "${_LOGGER_PREVIOUS_HASH:-}" "$LOGGER_EVENT_BODY" |
+        sha256sum |
+        awk '{print $1}')
 
-    if [[ "$previous_hash" != "$chain_hash" ]]; then
-        echo "Integrity chain: INVALID"
-        echo "Reason: final chain hash mismatch"
+    # if calculated hash is different, from written hash in file
+    if [[ "$calculated_hash" != "$LOGGER_EVENT_HASH" ]]; then
+        # setting number of event that failed
+        LOGGER_CHAIN_FAIL_EVENT=$((LOGGER_CHAIN_EVENTS + 1))
+        # setting fail reason
+        LOGGER_CHAIN_FAIL_REASON="event hash mismatch"
         return 1
     fi
 
-    echo "PHOBOS Logger Integrity"
-    echo "-----------------------"
-    echo "Events checked: $event_count"
-    echo "Chain status:   VALID"
-    echo "Final hash:     $chain_hash"
+    # setting local variable to hash-value from file
+    _LOGGER_PREVIOUS_HASH="$LOGGER_EVENT_HASH"
+    # incrementing number of looked events
+    ((LOGGER_CHAIN_EVENTS++))
+    return 0
+}
+
+# verifies whole chain
+# returns 0 when intact, 1 otherwise.
+# result details are exposed via:
+#   LOGGER_CHAIN_EVENTS     number of events verified
+#   LOGGER_CHAIN_HASH       final hash read from the chain file
+#   LOGGER_CHAIN_FAIL_EVENT 1-based index of the failing event (0 if none)
+#   LOGGER_CHAIN_FAIL_REASON human readable failure reason
+logger_chain_check() {
+    # resetting global variables
+    LOGGER_CHAIN_EVENTS=0
+    LOGGER_CHAIN_HASH=""
+    LOGGER_CHAIN_FAIL_EVENT=0
+    LOGGER_CHAIN_FAIL_REASON=""
+
+    # if log-file does not exist
+    if [[ ! -f "$EVENT_LOG" ]]; then
+        logger_error "Event log not found."
+        return 1
+    fi
+
+    # if chain-file does not exist
+    if [[ ! -f "$LOGGER_CHAIN_FILE" ]]; then
+        logger_error "Chain file not found."
+        return 1
+    fi
+
+    # initialising previous hash var for chain walk
+    _LOGGER_PREVIOUS_HASH=""
+
+    # iterating over chain, with check_event as callback
+    logger_chain_walk "$EVENT_LOG" _logger_chain_check_event || return 1
+
+    # tip of the recomputed chain must match stored chain file,
+    # otherwise the log was truncated or had events appended/removed.
+    LOGGER_CHAIN_HASH=$(cat "$LOGGER_CHAIN_FILE")
+    if [[ "$_LOGGER_PREVIOUS_HASH" != "$LOGGER_CHAIN_HASH" ]]; then
+        LOGGER_CHAIN_FAIL_REASON="final chain hash mismatch"
+        return 1
+    fi
 
     return 0
 }
