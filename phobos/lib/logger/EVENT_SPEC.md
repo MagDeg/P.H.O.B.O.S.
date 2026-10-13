@@ -546,10 +546,11 @@ entry point and sources them all:
 - `collector/collector_audit.sh` — `logger_collect_audit_block` maps a coalesced
   audit block to a single `FILE` event (`CREATE`/`DELETE`/`MOVE`/`RENAME`/
   `MODIFY`). Source/target are taken from `PATH` records by `nametype`
-  (`PARENT` records name a directory, never the file), so `openat` on an
-  existing file (nametype `NORMAL`) produces no event. Actors are limited to
-  real users (`auid>=1000`) and the sudo helper's own file operations are
-  ignored.
+  (`PARENT` records name a directory, never the file). A writable open whose
+  `PATH` record is `nametype=CREATE` is a creation (`CREATE`); a writable open
+  whose `PATH` record is `nametype=NORMAL` means the file already existed and
+  was modified in place (`MODIFY`). Actors are limited to real users
+  (`auid>=1000`) and the sudo helper's own file operations are ignored.
 
 Each channel has an entry point that feeds the collectors:
 

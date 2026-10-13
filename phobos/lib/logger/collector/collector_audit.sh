@@ -199,14 +199,19 @@ logger_collect_audit_block() {
             action="MODIFY"
             severity="MEDIUM"
             ;;
-        # open file or create (only a real creation has nametype=CREATE)
+        # open file: a real creation has nametype=CREATE; otherwise the file
+        # already existed and was opened for writing -> MODIFY
         open|openat|openat2|creat)
             local create_path
             create_path="$(_logger_audit_path_by_type CREATE path_names path_ntypes)"
-            [[ -n "$create_path" ]] || return 1
-            source="$create_path"
-            action="CREATE"
-            severity="LOW"
+            if [[ -n "$create_path" ]]; then
+                source="$create_path"
+                action="CREATE"
+                severity="LOW"
+            else
+                action="MODIFY"
+                severity="MEDIUM"
+            fi
             ;;
         *)
             return 1

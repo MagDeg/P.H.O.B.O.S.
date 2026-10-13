@@ -72,7 +72,11 @@ EOF
     mkdir -p "$(dirname "$LOGGER_AUDIT_RULES")"
     cat > "$LOGGER_AUDIT_RULES" << EOF 
 ## PHOBOS logger - state-changing file operations by real users (auid>=1000)
--a always,exit -F arch=b64 -S openat -F a2&0100 -F auid>=1000 -F auid!=unset -k phobos-file
+## writable opens (a2&03 / a1&03 = O_WRONLY|O_RDWR) capture in-place
+## modifications of existing files, not just creations
+-a always,exit -F arch=b64 -S openat -F a2&03 -F auid>=1000 -F auid!=unset -k phobos-file
+-a always,exit -F arch=b64 -S open -F a1&03 -F auid>=1000 -F auid!=unset -k phobos-file
+-a always,exit -F arch=b64 -S creat -F auid>=1000 -F auid!=unset -k phobos-file
 -a always,exit -F arch=b64 -S truncate,ftruncate,rename,renameat,renameat2,unlink,unlinkat,link,linkat,symlink,symlinkat -F auid>=1000 -F auid!=unset -k phobos-file
 EOF
 
