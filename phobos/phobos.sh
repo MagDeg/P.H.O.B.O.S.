@@ -65,6 +65,9 @@ case "$1" in
     check_dependencies)
         check_dependencies
         ;;
+    init)
+        install_dependencies
+        ;;
     save)
         if [[ -d "$2" ]]; then
             save_folder "$2" "$3"

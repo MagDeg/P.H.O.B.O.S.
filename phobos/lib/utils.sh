@@ -96,37 +96,54 @@ add_to_path() {
 }
 
 
-check_dependencies() {
-    # exists a runnable command called xxhsum?
-    # if installed, sth. like this will be returned /usr/bin/xxhsum
-    # &> /dev/null suppresses a displayed massage (sth. like a data garbage can)
-    if ! command -v xxhsum &> /dev/null; then
-        # in case system runns on ubuntu/debian needed tools will be installed with apt manager
-        if command -v apt &> /dev/null; then
-            sudo apt update
-            # -y automatically approves all questions privded with yes
-            sudo apt install -y xxhash
+# installs every package PHOBOS needs to run.
+# detects the package manager (apt/dnf/pacman) and installs the matching
+# package names, including auditd for file-operation logging.
+# returns 0 on success, 1 when no supported package manager was found.
+install_dependencies() {
+    local pm=""
+    local core_pkgs=""
+    local audit_pkgs=""
 
-        # in case using fedora/RHEL
-        elif command -v dnf &> /dev/null; then
-            sudo dnf install -y xxhash
-        # in case using Arch Linux
-        elif command -v pacman &> /dev/null; then
-            sudo pacman -S --noconfirm xxhash
-        # in case there is no supported package manager
-        else
-            echo "No supported package manager was found."
-            # ends total script
-            exit 1
-        fi
+    # standard tools: xxhsum for hashing, openssl for logger event ids,
+    # gzip for backup compression, coreutils/util-linux for the rest
+    core_pkgs="xxhash openssl gzip coreutils util-linux"
+
+    # package manager detection
+    if command -v apt-get &> /dev/null; then
+        pm="apt-get"
+        audit_pkgs="auditd"
+    elif command -v dnf &> /dev/null; then
+        pm="dnf"
+        audit_pkgs="audit"
+    elif command -v pacman &> /dev/null; then
+        pm="pacman"
+        audit_pkgs="audit"
+    else
+        echo "No supported package manager was found (apt/dnf/pacman)." >&2
+        return 1
     fi
 
-    # file-operation logging needs auditd   
-    # command -v augenrules : checks if tool exists
-    # &> /dev/null - silences output
-    if ! command -v augenrules &> /dev/null; then  
-        echo "Optional: install auditd for file-operation logging." 
-    fi  
+    case "$pm" in
+        apt-get)
+            sudo apt-get update
+            sudo apt-get install -y $core_pkgs $audit_pkgs
+            ;;
+        dnf)
+            sudo dnf install -y $core_pkgs $audit_pkgs
+            ;;
+        pacman)
+            sudo pacman -Sy --noconfirm $core_pkgs $audit_pkgs
+            ;;
+    esac
+
+    return 0
+}
+
+# installs all dependencies; kept as a short alias so the
+# `phobos check_dependencies` command keeps working.
+check_dependencies() {
+    install_dependencies
 }
 
 # returns version of phobos system
