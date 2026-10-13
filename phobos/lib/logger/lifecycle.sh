@@ -215,3 +215,4 @@ logger_status() {
 
     echo ""
 }
+

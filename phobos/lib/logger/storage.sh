@@ -218,3 +218,25 @@ logger_chain_check() {
 
     return 0
 }
+
+logger_delete_records() {
+    logger_require_root "logger clear" || return 1
+
+
+    # deletion of chain file
+    if [[ -f "$LOGGER_CHAIN_FILE" ]]; then
+        rm -f "$LOGGER_CHAIN_FILE"
+        echo "Removed logger chain-file"
+    else
+        logger_error "No logger chain-file found"
+    fi
+    # deletion of log file
+    if [[ -f "$EVENT_LOG" ]]; then 
+        rm -f "$EVENT_LOG"
+        echo "Removed logger log-file"
+    else
+        logger_error "No logger log-file found"
+    fi
+    echo "Deletion of logger files finished"
+    return 0
+}

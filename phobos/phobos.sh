@@ -94,6 +94,9 @@ case "$1" in
         ;;
     logger)
         case "$2" in
+            clear) 
+                logger_delete_records
+                ;;
             enable)
                 logger_enable
                 ;;
