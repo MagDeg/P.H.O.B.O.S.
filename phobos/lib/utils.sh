@@ -52,13 +52,13 @@ add_to_path() {
 
     # check if creating the installation directory was successful
     if [[ $? -ne 0 ]]; then
-        echo "Could not create installation directory: $install_dir"
+        error "Could not create installation directory: $install_dir"
         return 1
     fi
 
     # copy the main PHOBOS script into the installation directory
     if ! sudo cp "$project_dir/phobos.sh" "$install_dir/phobos.sh"; then
-        echo "Could not install phobos.sh"
+        error "Could not install phobos.sh"
         return 1
     fi
 
@@ -68,13 +68,13 @@ add_to_path() {
     # copy the contents of lib/
     # and not the lib directory itself.
     if ! sudo cp -r "$project_dir/lib/." "$install_dir/"; then
-        echo "Could not install PHOBOS libraries"
+        error "Could not install PHOBOS libraries"
         return 1
     fi
 
     # make the main PHOBOS script executable
     if ! sudo chmod +x "$install_dir/phobos.sh"; then
-        echo "Could not make phobos.sh executable"
+        error "Could not make phobos.sh executable"
         return 1
     fi
 
@@ -88,11 +88,12 @@ add_to_path() {
     #
     # /usr/local/lib/phobos/phobos.sh
     if ! sudo ln -sf "$install_dir/phobos.sh" /usr/local/bin/phobos; then
-        echo "Could not create /usr/local/bin/phobos"
+        error "Could not create /usr/local/bin/phobos"
         return 1
     fi
 
-    echo "PHOBOS successfully installed!"
+    success "PHOBOS successfully installed!"
+    hint "Run 'phobos --version' to verify the installation."
 }
 
 
@@ -120,7 +121,7 @@ install_dependencies() {
         pm="pacman"
         audit_pkgs="audit"
     else
-        echo "No supported package manager was found (apt/dnf/pacman)." >&2
+        error "No supported package manager was found (apt/dnf/pacman)."
         return 1
     fi
 
@@ -137,6 +138,7 @@ install_dependencies() {
             ;;
     esac
 
+    success "Dependencies installed via $pm."
     return 0
 }
 
@@ -148,7 +150,7 @@ check_dependencies() {
 
 # returns version of phobos system
 version() {
-    echo "$VERSION"
+    printf '%sPHOBOS%s %s\n' "$C_BOLD" "$C_RESET" "$C_CYAN$VERSION$C_RESET"
 }
 
 log_backup() {
@@ -187,8 +189,7 @@ log_backup() {
 }
 
 list_drives() {
-    echo "Connected drives"
-    echo "----------------"
+    header "Connected drives"
 
     # -p : print full device paths
     # -n : no header
@@ -196,12 +197,13 @@ list_drives() {
     # -o ... : select columns
     # awk filter keeps only rows where field 6 = 'part' and either field 2 or field 5is non-empty
     lsblk -pnro NAME,LABEL,FSTYPE,SIZE,MOUNTPOINT,TYPE |
-        awk '$6 == "part" && ($2 != "" || $5 != "") {
-            printf "Device:     %s\n", $1
-            printf "Label:      %s\n", ($2 != "" ? $2 : "-")
-            printf "Filesystem: %s\n", ($3 != "" ? $3 : "-")
-            printf "Size:       %s\n", $4
-            printf "Mountpoint: %s\n", ($5 != "" ? $5 : "-")
+        awk -v BOLD="$C_BOLD" -v RESET="$C_RESET" -v CYAN="$C_CYAN" -v GRAY="$C_GRAY" \
+        '$6 == "part" && ($2 != "" || $5 != "") {
+            printf "  " GRAY "Device:"     RESET "     %s\n", BOLD CYAN $1 RESET
+            printf "  " GRAY "Label:"      RESET "      %s\n", ($2 != "" ? $2 : "-")
+            printf "  " GRAY "Filesystem:" RESET " %s\n", ($3 != "" ? $3 : "-")
+            printf "  " GRAY "Size:"       RESET "       %s\n", BOLD $4 RESET
+            printf "  " GRAY "Mountpoint:" RESET " %s\n", ($5 != "" ? $5 : "-")
             printf "\n"
         }'
 }

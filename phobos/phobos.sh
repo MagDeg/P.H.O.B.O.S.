@@ -20,17 +20,29 @@ SCRIPT_DIR="$(dirname "$local_script")"
 # ├── phobos.sh
 # └── lib/
 #     ├── config.sh
+#     ├── style.sh
 #     ├── utils.sh
-#     └── ...
+#     ├── backup/
+#     │   ├── backup.sh
+#     │   ├── restore.sh
+#     │   ├── container.sh
+#     │   ├── scheduler.sh
+#     │   └── integration.sh
+#     └── logger/
+#         └── ...
 #
 # During installation the library files are currently copied directly
-# next to phobos.sh:
+# next to phobos.sh, keeping their subdirectories:
 #
 # /usr/local/lib/phobos/
 # ├── phobos.sh
 # ├── config.sh
+# ├── style.sh
 # ├── utils.sh
-# └── ...
+# ├── backup/
+# │   └── ...
+# └── logger/
+#     └── ...
 if [[ -d "$SCRIPT_DIR/lib" ]]; then
     LIB_DIR="$SCRIPT_DIR/lib"
 else
@@ -39,12 +51,13 @@ fi
 
 # loading all PHOBOS libraries
 source "$LIB_DIR/config.sh"
+source "$LIB_DIR/style.sh"
 source "$LIB_DIR/utils.sh"
-source "$LIB_DIR/backup.sh"
-source "$LIB_DIR/restore.sh"
-source "$LIB_DIR/container.sh"
-source "$LIB_DIR/scheduler.sh"
-source "$LIB_DIR/integration.sh"
+source "$LIB_DIR/backup/backup.sh"
+source "$LIB_DIR/backup/restore.sh"
+source "$LIB_DIR/backup/container.sh"
+source "$LIB_DIR/backup/scheduler.sh"
+source "$LIB_DIR/backup/integration.sh"
 
 source "$LIB_DIR/logger/storage.sh"
 source "$LIB_DIR/logger/logger.sh"
@@ -74,12 +87,13 @@ case "$1" in
         elif [[ -f "$2" ]]; then
             save_file "$2" "$3"
         else 
-            echo "Source not found: $2"
+            error "Source not found: $2"
+            hint "Expected a file or directory path."
             exit 1
         fi
         ;;
     info)
-        info "$2"
+        container_info "$2"
         ;;
     add_to_path)
         add_to_path
@@ -91,7 +105,8 @@ case "$1" in
         elif [[ -f "$2" ]]; then 
             restore_file "$2" "$3"
         else 
-            echo "Backup not found: $2"
+            error "Backup not found: $2"
+            hint "Expected a .phbs file or a backup directory."
             exit 1
         fi
         ;;
@@ -134,11 +149,13 @@ case "$1" in
                     "INFO" \
                     --details "manual_test"
 
-                echo "Logger test event created."
+                success "Logger test event created."
                 ;;
 
             *)
-                echo "Usage: phobos logger {enable|disable|status|verify|show|ingest|ingest-audit|test}"
+                error "Unknown logger subcommand: $2"
+                printf '\n%sUsage:%s\n' "$C_BOLD" "$C_RESET"
+                printf '  %sphobos logger {enable|disable|status|verify|show|ingest|ingest-audit|test}%s\n' "$C_CYAN" "$C_RESET"
                 ;;
         esac
         ;;
@@ -154,7 +171,9 @@ case "$1" in
                 drive_status
                 ;;
             *)
-                echo "Usage: phobos drive {enable|disable|status}"
+                error "Unknown drive subcommand: $2"
+                printf '\n%sUsage:%s\n' "$C_BOLD" "$C_RESET"
+                printf '  %sphobos drive {enable|disable|status}%s\n' "$C_CYAN" "$C_RESET"
                 ;;
         esac
         ;;
@@ -194,18 +213,20 @@ case "$1" in
                 schedule_list
                 ;;
             *)
-                echo "Usage:"
-                echo "  phobos schedule add <name> <source> <destination> <interval> [--drive <label>]"
-                echo "  phobos schedule run"
-                echo "  phobos schedule enable"
-                echo "  phobos schedule disable"
-                echo "  phobos schedule status"
-                echo "  phobos schedule remove <name>"
-                echo "  phobos schedule list"
+                error "Unknown schedule subcommand: $2"
+                printf '\n%sUsage:%s\n' "$C_BOLD" "$C_RESET"
+                printf '  %sphobos schedule add%s <name> <source> <destination> <interval> [--drive <label>]\n' "$C_CYAN" "$C_RESET"
+                printf '  %sphobos schedule run%s\n' "$C_CYAN" "$C_RESET"
+                printf '  %sphobos schedule enable%s\n' "$C_CYAN" "$C_RESET"
+                printf '  %sphobos schedule disable%s\n' "$C_CYAN" "$C_RESET"
+                printf '  %sphobos schedule status%s\n' "$C_CYAN" "$C_RESET"
+                printf '  %sphobos schedule remove%s <name>\n' "$C_CYAN" "$C_RESET"
+                printf '  %sphobos schedule list%s\n' "$C_CYAN" "$C_RESET"
                 ;;
         esac
         ;;
     *)
-        echo "Ungültiger Befehl"
+        error "Invalid command: ${1:-<none>}"
+        hint "Run 'phobos --version' or see the manual for available commands."
         ;;
 esac

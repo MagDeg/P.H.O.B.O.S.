@@ -5,7 +5,7 @@ restore_file() {
 
     # checking if .phbs-container exists
     if [[ ! -f "$container" ]]; then
-        echo "Container not found: $container"
+        error "Container not found: $container"
         return 1
     fi
 
@@ -20,7 +20,7 @@ restore_file() {
     # + one or multple of those
     # $ end of text
     if ! [[ "$header_size" =~ ^[0-9]+$ ]]; then
-        echo "Invalid PHBS-Container."
+        error "Invalid PHBS-Container."
         return 1
     fi
 
@@ -41,7 +41,7 @@ restore_file() {
     # checking if header starts with PHBS to make shure it is a phobos-container
     # grep -q : search but do not return result
     if ! grep -q '^PHBS$' <<< "$header"; then
-        echo "Invalid PHBS-Container."
+        error "Invalid PHBS-Container."
         return 1
     fi
 
@@ -58,7 +58,7 @@ restore_file() {
 
     # cecking if filename exits, if not, file can not be restored
     if [[ -z "$filename" ]]; then
-        echo "Header contains no filename."
+        error "Header contains no filename."
         return 1
     fi
 
@@ -79,7 +79,7 @@ restore_file() {
     # creating target path
     local output="$restore_dir/$filename"
 
-    echo "Restoring: $output"
+    info "Restoring: $output"
 
     # checking compression type
     case "$compression" in 
@@ -90,7 +90,7 @@ restore_file() {
             # -c : write result to stdcout, instead of overriting source file
             # > : moves output to correct file
             if ! gzip -dc "$compressed" > "$output"; then
-                echo "Error while decompression"
+                error "Error while decompression"
                 rm -f "$compressed" "$output"
                 return 1
             fi
@@ -101,7 +101,7 @@ restore_file() {
             cp "$compressed" "$output"
             ;;
         *)
-            echo "Not supported compression type: $compression"
+            error "Not supported compression type: $compression"
             rm -f "$compressed"
             return 1
             ;;
@@ -119,15 +119,15 @@ restore_file() {
 
     # if those hashes dont match, sth went wrong during process (e.g. file was damaged)
     if [[ "$actual_hash" != "$expected_hash" ]]; then
-        echo "Error: Hashes are not consistent!"
-        echo "Expected: $expected_hash"
-        echo "Received: $actual_hash"
+        error "Hashes are not consistent!"
+        hint "Expected: $expected_hash"
+        hint "Received: $actual_hash"
         # remove faulty file
         rm -f "$output"
         return 1
     fi
 
-    echo "Successfully recovered: $output"
+    success "Successfully recovered: $output"
 }
 
 
@@ -138,13 +138,15 @@ restore_dir() {
 
     # if either of those parameters is empty, the funtion is not called properly
     if [[ -z "$backup_dir" || -z "$restore_dir" ]]; then
-        echo "Usage: phobos restore_dir <backup> <ziel>"
+        error "Missing arguments."
+        printf '\n%sUsage:%s\n' "$C_BOLD" "$C_RESET"
+        printf '  %sphobos restore <backup> <target>%s\n' "$C_CYAN" "$C_RESET"
         return 1
     fi
 
     # checking if backup-directory exists properly
     if [[ ! -d "$backup_dir" ]]; then
-        echo "Backup-directory not found: $backup_dir"
+        error "Backup-directory not found: $backup_dir"
         return 1
     fi
 
@@ -175,11 +177,11 @@ restore_dir() {
         # creating target directory
         mkdir -p "$target_dir"
 
-        echo "Restore: $container"
+        info "Restore: $container"
 
         # restore file is delageted to designated function
         if ! restore_file "$container" "$target_dir"; then
-            echo "Error with: $container"
+            error "Error with: $container"
         fi
 
     done

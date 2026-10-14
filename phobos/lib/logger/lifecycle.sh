@@ -10,8 +10,8 @@ logger_enable() {
 
     # verify LOGGER_UDEV_HELPER exists
     if [[ ! -f "$LOGGER_UDEV_HELPER" ]]; then
-        logger_error "Logger udev helper not found:"
-        logger_error "$LOGGER_UDEV_HELPER"
+        error "Logger udev helper not found."
+        hint "$LOGGER_UDEV_HELPER"
         return 1
     fi
 
@@ -30,8 +30,8 @@ EOF
 
     # verify journal helper exists
     if [[ ! -f "$LOGGER_JOURNAL_HELPER" ]]; then
-        logger_error "Logger journal helper not found:"
-        logger_error "$LOGGER_JOURNAL_HELPER"
+        error "Logger journal helper not found."
+        hint "$LOGGER_JOURNAL_HELPER"
         return 1
     fi
 
@@ -140,10 +140,10 @@ EOF
         systemctl enable --now phobos-logger-journal.service
         systemctl enable --now phobos-logger-audit.service  
     else
-        logger_error "systemctl not found; collector services not started."  
+        warn "systemctl not found; collector services not started."
     fi
 
-    echo "PHOBOS logger enabled."
+    success "PHOBOS logger enabled."
 }
 
 # removes udev-rules
@@ -187,8 +187,8 @@ logger_disable() {
         systemctl daemon-reload
     fi 
 
-    echo "PHOBOS logger disabled."
-    echo "Existing log data was preserved."
+    success "PHOBOS logger disabled."
+    hint "Existing log data was preserved."
 }
 
 # prints current logger state
@@ -196,56 +196,55 @@ logger_disable() {
 logger_status() {
     logger_require_root "logger status" || return 1
 
-    echo "PHOBOS Logger"
-    echo "-------------"
+    header "PHOBOS Logger"
 
     if [[ -f "$LOGGER_UDEV_RULES" ]]; then
-        echo "Drive monitoring: enabled"
+        field "Drive monitoring:" "enabled" "$C_GREEN"
     else
-        echo "Drive monitoring: disabled"
+        field "Drive monitoring:" "disabled" "$C_GRAY"
     fi
 
     if [[ -f "$LOGGER_JOURNAL_UNIT" ]] && command -v systemctl &> /dev/null && systemctl is-active --quiet phobos-logger-journal.service; then
-        echo "Journal monitor:   active"
+        field "Journal monitor:" "active" "$C_GREEN"
     elif [[ -f "$LOGGER_JOURNAL_UNIT" ]]; then
-        echo "Journal monitor:   installed (inactive)"
+        field "Journal monitor:" "installed (inactive)" "$C_YELLOW"
     else
-        echo "Journal monitor:   disabled"
+        field "Journal monitor:" "disabled" "$C_GRAY"
     fi
 
     if [[ -f "$LOGGER_AUDIT_UNIT" ]] && command -v systemctl &> /dev/null && systemctl is-active --quiet phobos-logger-audit.service; then 
-        echo "File monitoring:   active"  
+        field "File monitoring:" "active" "$C_GREEN"
     elif [[ -f "$LOGGER_AUDIT_UNIT" ]]; then  
-        echo "File monitoring:   installed (inactive)"  
+        field "File monitoring:" "installed (inactive)" "$C_YELLOW"
     else
-        echo "File monitoring:   disabled"
+        field "File monitoring:" "disabled" "$C_GRAY"
     fi
 
     # permission monitoring runs on the same audit service
     if [[ -f "$LOGGER_PERMISSION_RULES" ]] && command -v systemctl &> /dev/null && systemctl is-active --quiet phobos-logger-audit.service; then
-        echo "Permission mon.:   active"
+        field "Permission mon.:" "active" "$C_GREEN"
     elif [[ -f "$LOGGER_PERMISSION_RULES" ]]; then
-        echo "Permission mon.:   installed (inactive)"
+        field "Permission mon.:" "installed (inactive)" "$C_YELLOW"
     else
-        echo "Permission mon.:   disabled"
+        field "Permission mon.:" "disabled" "$C_GRAY"
     fi
 
     if [[ -d "$LOGGER_DIR" ]]; then
-        echo "Storage:           available"
+        field "Storage:" "available" "$C_GREEN"
     else
-        echo "Storage:           not initialized"
+        field "Storage:" "not initialized" "$C_GRAY"
     fi
 
     if [[ -f "$EVENT_LOG" ]]; then
-        echo "Events:            $(grep -c '^id=' "$EVENT_LOG" 2>/dev/null)"
+        field "Events:" "$(grep -c '^id=' "$EVENT_LOG" 2>/dev/null)" "$C_CYAN"
     else
-        echo "Events:            0"
+        field "Events:" "0" "$C_GRAY"
     fi
 
     if [[ -f "$LOGGER_CHAIN_FILE" ]]; then
-        echo "Integrity chain:   available"
+        field "Integrity chain:" "available" "$C_GREEN"
     else
-        echo "Integrity chain:   not initialized"
+        field "Integrity chain:" "not initialized" "$C_GRAY"
     fi
 
     echo ""

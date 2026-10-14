@@ -8,6 +8,7 @@
 
 LIB_DIR="${LIB_DIR:-/usr/local/lib/phobos}"
 
+source "$LIB_DIR/style.sh"
 source "$LIB_DIR/logger/storage.sh"
 source "$LIB_DIR/logger/logger.sh"
 source "$LIB_DIR/logger/validation.sh"

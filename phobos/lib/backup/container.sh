@@ -1,11 +1,11 @@
 # reads meta-data from .phbs files
-info() {
+container_info() {
     #defining parameters as local variables
     local container="$1" # path to .phbs-container
 
     # checking if .phsb-file exits
     if [[ ! -f "$container" ]]; then
-        echo "File not found: $container"
+        error "File not found: $container"
         return 1
     fi
 
@@ -15,7 +15,7 @@ info() {
 
     # validating header size using REGEX, so only numbers are contained
     if ! [[ "$header_size" =~ ^[0-9]+$ ]]; then
-        echo "Invalid PHBS-Container."
+        error "Invalid PHBS-Container."
         return 1
     fi
 
@@ -28,7 +28,7 @@ info() {
 
     # checking if container is phbs-container
     if ! grep -q "^PHBS$" <<< "$header"; then
-        echo "Invalid PHBS-Container."
+        error "Invalid PHBS-Container."
         return 1
     fi
 
@@ -54,14 +54,13 @@ info() {
     compressed_size=$((container_size - header_size - 9))
 
     # Ausgabe
-    echo "PHBS Container"
-    echo "--------------"
-    echo "Version:          $version"
-    echo "Filename:         $filename"
-    echo "Compression:      $compression"
-    echo "Hash:             $hash"
-    echo "Original Size:    $original_size bytes"
-    echo "Compressed Size:  $compressed_size bytes"
+    header "PHBS Container"
+    field "Version:"         "$version" "$C_CYAN"
+    field "Filename:"        "$filename"
+    field "Compression:"     "$compression"
+    field "Hash:"            "$hash" "$C_GRAY"
+    field "Original Size:"   "${original_size} bytes"
+    field "Compressed Size:" "${compressed_size} bytes"
 
     # calculating compression rate
     # only if orignal file is not empty
@@ -75,6 +74,6 @@ info() {
             'BEGIN { printf "%.1f", (1 - compressed / original) * 100 }')
 
         # print compression rate
-        echo "Compression Rate: ${compression_percent}%"
+        field "Compression Rate:" "${compression_percent}%" "$C_GREEN"
     fi
 }

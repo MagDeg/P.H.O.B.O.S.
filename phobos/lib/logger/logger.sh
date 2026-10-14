@@ -2,8 +2,14 @@
 
 
 # new method to print error messages to stderr, so actual commands stay clean
+# uses the shared style helper when available, otherwise falls back to a
+# plain stderr write so standalone entry points keep working.
 logger_error() {
-    printf '%s\n' "$*" >&2
+    if declare -F error > /dev/null 2>&1; then
+        error "$@"
+    else
+        printf '%s\n' "$*" >&2
+    fi
 }
 
 # method to check, if command is run as root

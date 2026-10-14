@@ -4,18 +4,20 @@
 _logger_show_event() {
     local line
     local key
+    local value
     local label
 
     # increases shown events
     ((LOGGER_SHOW_COUNT++))
 
-    echo "Event #$LOGGER_SHOW_COUNT"
-    echo "----------------------------------------"
+    printf '%sEvent #%s%s\n' "$C_BOLD$C_CYAN" "$LOGGER_SHOW_COUNT" "$C_RESET"
+    printf '%s----------------------------------------%s\n' "$C_DIM" "$C_RESET"
 
     # reading each line in the event body
     while IFS= read -r line; do
         # everything before first =
         key="${line%%=*}"
+        value="${line#*=}"
 
         case "$key" in
             id)        label="ID" ;;
@@ -32,8 +34,19 @@ _logger_show_event() {
             *)         continue ;;
         esac
 
-        # prints left aligned label and value
-        printf '%-11s%s\n' "$label:" "${line#*=}"
+        # color the two semantically important fields
+        case "$key" in
+            severity)
+                printf '%s%-11s%s %s\n' "$C_GRAY" "$label:" "$C_RESET" "$(severity_label "$value")"
+                ;;
+            status)
+                printf '%s%-11s%s %s\n' "$C_GRAY" "$label:" "$C_RESET" "$(status_label "$value")"
+                ;;
+            *)
+                # prints left aligned label and value
+                printf '%s%-11s%s %s%s%s\n' "$C_GRAY" "$label:" "$C_RESET" "$C_WHITE" "$value" "$C_RESET"
+                ;;
+        esac
     done <<< "$LOGGER_EVENT_BODY"
 
     echo ""
@@ -50,15 +63,14 @@ logger_show() {
         return 1
     fi
 
-    echo "PHOBOS Logger Events"
-    echo "===================="
+    header "PHOBOS Logger Events"
     echo ""
 
     LOGGER_SHOW_COUNT=0
     # iterating through every event in log file
     logger_chain_walk "$EVENT_LOG" _logger_show_event
 
-    echo "Total events: $LOGGER_SHOW_COUNT"
+    printf '%sTotal events:%s %s%s%s\n' "$C_GRAY" "$C_RESET" "$C_BOLD$C_CYAN" "$LOGGER_SHOW_COUNT" "$C_RESET"
 }
 
 # recomputes the hash chain and reports whether it is intact
@@ -67,20 +79,19 @@ logger_verify_chain() {
     logger_require_root "logger verify" || return 1
 
     if logger_chain_check; then
-        echo "PHOBOS Logger Integrity"
-        echo "-----------------------"
-        echo "Events checked: $LOGGER_CHAIN_EVENTS"
-        echo "Chain status:   VALID"
-        echo "Final hash:     $LOGGER_CHAIN_HASH"
+        header "PHOBOS Logger Integrity"
+        field "Events checked:" "$LOGGER_CHAIN_EVENTS"
+        field "Chain status:"   "VALID" "$C_GREEN"
+        field "Final hash:"     "$LOGGER_CHAIN_HASH" "$C_GRAY"
         return 0
     fi
 
-    logger_error "Integrity chain: INVALID"
+    error "Integrity chain: INVALID"
     if [[ -n "$LOGGER_CHAIN_FAIL_REASON" ]]; then
-        logger_error "Reason: $LOGGER_CHAIN_FAIL_REASON"
+        hint "Reason: $LOGGER_CHAIN_FAIL_REASON"
     fi
     if (( LOGGER_CHAIN_FAIL_EVENT > 0 )); then
-        logger_error "Failed at event: $LOGGER_CHAIN_FAIL_EVENT"
+        hint "Failed at event: $LOGGER_CHAIN_FAIL_EVENT"
     fi
     return 1
 }

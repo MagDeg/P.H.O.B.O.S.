@@ -10,7 +10,9 @@ schedule_add() {
 
     # checking whether the required parameters were provided
     if [[ -z "$job_name" || -z "$source" || -z "$destination" ]]; then
-        echo "Usage: phobos schedule add <name> <source> <destination> [--interval <interval>] [--drive <label>] [--trigger <timer|drive>]"
+        error "Missing arguments."
+        printf '\n%sUsage:%s\n' "$C_BOLD" "$C_RESET"
+        printf '  %sphobos schedule add%s <name> <source> <destination> [--interval <interval>] [--drive <label>] [--trigger <timer|drive>]\n' "$C_CYAN" "$C_RESET"
         return 1
     fi
 
@@ -26,7 +28,7 @@ schedule_add() {
             --interval) 
                 # checking if interval is provided
                 if [[ -z "$2" ]]; then
-                    echo "Missing interval."
+                    error "Missing interval."
                     return 1
                 fi
 
@@ -40,7 +42,7 @@ schedule_add() {
             --drive)
                 # checking if drive name is provided
                 if [[ -z "$2" ]]; then
-                    echo "Missing drive label."
+                    error "Missing drive label."
                     return 1
                 fi
 
@@ -53,7 +55,7 @@ schedule_add() {
             --trigger)
                 # checking if trigger is provided
                 if [[ -z "$2" ]]; then
-                    echo "Missing trigger."
+                    error "Missing trigger."
                     return 1
                 fi
 
@@ -63,7 +65,7 @@ schedule_add() {
                 shift 2
                 ;;
             *)
-                echo "Unknown option: $1"
+                error "Unknown option: $1"
                 return 1
                 ;;
         esac
@@ -71,7 +73,7 @@ schedule_add() {
 
     # checking whether the source directory exists
     if [[ ! -d "$source" ]]; then
-        echo "Source directory not found: $source"
+        error "Source directory not found: $source"
         return 1
     fi
 
@@ -81,8 +83,8 @@ schedule_add() {
         hourly|daily|weekly|monthly)
             ;;
         *)
-            echo "Invalid interval."
-            echo "Allowed: hourly, daily, weekly, monthly"
+            error "Invalid interval."
+            hint "Allowed: hourly, daily, weekly, monthly"
             return 1
             ;;
     esac
@@ -92,21 +94,21 @@ schedule_add() {
         timer|drive)
             ;;
         *)
-            echo "Invalid trigger."
-            echo "Allowed: timer, drive"
+            error "Invalid trigger."
+            hint "Allowed: timer, drive"
             return 1
             ;;
     esac
 
     #drive trigger requires a drive
     if [[ "$trigger" == "drive" && "$destination" = /* ]]; then
-        echo "Destination must be relative when using --trigger drive."
+        error "Destination must be relative when using --trigger drive."
         return 1
     fi
 
     # timer trigger must not use a drive
     if [[ "$trigger" == "timer" && -n "$drive" ]]; then
-        echo "--drive can only be used with --trigger drive."
+        error "--drive can only be used with --trigger drive."
         return 1
     fi
 
@@ -121,7 +123,7 @@ schedule_add() {
     # prevent accidentally overwriting an existing job
     # -f means, is file existing and a normale file
     if [[ -f "$job_file" ]]; then
-        echo "Scheduled backup already exists: $job_name"
+        error "Scheduled backup already exists: $job_name"
         return 1
     fi
 
@@ -148,11 +150,11 @@ schedule_add() {
         printf 'TRIGGER=%q\n' "$trigger"
     } > "$job_file"
 
-    echo "Scheduled backup created: $job_name ($trigger, $interval)"
+    success "Scheduled backup created: $job_name ($trigger, $interval)"
 
     # -n menas string is not empty
     if [[ -n "$drive" ]]; then
-        echo "Drive: $drive"
+        field "Drive:" "$drive" "$C_CYAN"
     fi
 }
 
@@ -210,7 +212,7 @@ schedule_run() {
             weekly) interval_seconds=604800 ;;
             monthly) interval_seconds=2592000 ;;
             *)
-                echo "Invalid interval for job: $NAME"
+                error "Invalid interval for job: $NAME"
                 continue
                 ;;
         esac
@@ -218,7 +220,7 @@ schedule_run() {
         # checking if intervall is reached, meaning a backup need to be done
         if (( now - last_success >= interval_seconds )); then
 
-            echo "Scheduled backup due: $NAME"
+            info "Scheduled backup due: $NAME"
 
             # doing backup, if successfull, update last_success in state_file
             if save_folder "$SOURCE" "$DESTINATION"; then
@@ -287,7 +289,7 @@ EOF
     # timer is permanently enabled and will be restartet after restart
     systemctl --user enable --now phobos-scheduler.timer
 
-    echo "PHOBOS scheduler enabled."
+    success "PHOBOS scheduler enabled."
 }
 
 # disables the automatic PHOBOS scheduler
@@ -305,7 +307,7 @@ schedule_disable() {
     # reloading configurations
     systemctl --user daemon-reload
 
-    echo "PHOBOS scheduler disabled."
+    success "PHOBOS scheduler disabled."
 }
 
 # displays the scheduler status
@@ -322,7 +324,9 @@ schedule_remove() {
 
     # checking whether a job name was provided
     if [[ -z "$job_name" ]]; then
-        echo "Usage: phobos schedule remove <name>"
+        error "Missing job name."
+        printf '\n%sUsage:%s\n' "$C_BOLD" "$C_RESET"
+        printf '  %sphobos schedule remove%s <name>\n' "$C_CYAN" "$C_RESET"
         return 1
     fi
 
@@ -332,7 +336,7 @@ schedule_remove() {
 
     # checking whether the scheduled job exists
     if [[ ! -f "$job_file" ]]; then
-        echo "Scheduled backup not found: $job_name"
+        error "Scheduled backup not found: $job_name"
         return 1
     fi
 
@@ -342,7 +346,7 @@ schedule_remove() {
     # removing the state information
     rm -f "$state_file"
 
-    echo "Scheduled backup removed: $job_name"
+    success "Scheduled backup removed: $job_name"
 }
 
 # displays all scheduled backup jobs
@@ -353,15 +357,14 @@ schedule_list() {
 
     # checking whether the jobs directory exists
     if [[ ! -d "$jobs_dir" ]]; then
-        echo "No scheduled backups found."
+        hint "No scheduled backups found."
         return 0
     fi
 
     # varibale to check if there was at least one conf file found
     local found=0
 
-    echo "Scheduled backups"
-    echo "-----------------"
+    header "Scheduled backups"
 
     for job in "$jobs_dir"/*.conf; do
 
@@ -374,16 +377,16 @@ schedule_list() {
         unset NAME SOURCE DESTINATION INTERVAL DRIVE
         source "$job"
 
-        echo "Name:        $NAME"
-        echo "Source:      $SOURCE"
-        echo "Destination: $DESTINATION"
-        echo "Interval:    $INTERVAL"
-        echo "Trigger:     $TRIGGER"
+        field "Name:"        "$NAME" "$C_BOLD$C_WHITE"
+        field "Source:"      "$SOURCE"
+        field "Destination:" "$DESTINATION"
+        field "Interval:"    "$INTERVAL" "$C_CYAN"
+        field "Trigger:"     "$TRIGGER"
 
         if [[ -n "$DRIVE" ]]; then
-            echo "Drive:       $DRIVE"
+            field "Drive:"   "$DRIVE" "$C_CYAN"
         else
-            echo "Drive:       none"
+            field "Drive:"   "none" "$C_GRAY"
         fi
 
         echo ""
@@ -391,7 +394,7 @@ schedule_list() {
     done
 
     if (( found == 0 )); then
-        echo "No scheduled backups found."
+        hint "No scheduled backups found."
     fi
 }
 
@@ -446,7 +449,7 @@ drive_trigger() {
 
         # checking if a drive was given as param
         if [[ -z "$DRIVE" ]]; then
-            echo "Drive trigger without drive configured: $NAME"
+            warn "Drive trigger without drive configured: $NAME"
             continue
         fi
 
@@ -463,16 +466,16 @@ drive_trigger() {
         # creating target path
         local target="$mountpoint/$DESTINATION"
 
-        echo "Drive detected: $DRIVE"
-        echo "Scheduled backup: $NAME"
-        echo "Destination: $target"
+        info "Drive detected: $DRIVE"
+        field "Scheduled backup:" "$NAME"
+        field "Destination:"      "$target"
 
         # start backup
         if save_folder "$SOURCE" "$target"; then
             local state_file="$state_dir/$NAME.state"
             printf "LAST_SUCCESS=%s\n" "$(date +%s)" > "$state_file"
         else
-            echo "Backup failed: $NAME"
+            error "Backup failed: $NAME"
         fi
 
     done

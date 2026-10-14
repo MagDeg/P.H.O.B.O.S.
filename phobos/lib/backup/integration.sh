@@ -7,8 +7,8 @@ drive_enable() {
 
     # checking for root privileges
     if [[ "$EUID" -ne 0 ]]; then
-        echo "This command requires root privileges."
-        echo "Run: sudo phobos drive enable"
+        error "This command requires root privileges."
+        hint "Run: sudo phobos drive enable"
         return 1
     fi
 
@@ -17,7 +17,7 @@ drive_enable() {
 
     # checking if binary exists
     if [[ -z "$phobos_bin" ]]; then
-        echo "phobos executable not found."
+        error "phobos executable not found."
         return 1
     fi
 
@@ -26,7 +26,7 @@ drive_enable() {
 
     # checking if user exits
     if [[ -z "$phobos_user" ]]; then
-        echo "Could not determine the logged-in user."
+        error "Could not determine the logged-in user."
         return 1
     fi
 
@@ -59,7 +59,7 @@ EOF
     # loading the nuew udev rules
     udevadm control --reload-rules
 
-    echo "PHOBOS drive trigger enabled."
+    success "PHOBOS drive trigger enabled."
 }
 
 drive_disable() {
@@ -69,8 +69,8 @@ drive_disable() {
 
     # checking for root privileges
     if [[ "$EUID" -ne 0 ]]; then
-        echo "This command requires root privileges."
-        echo "Run: sudo phobos drive disable"
+        error "This command requires root privileges."
+        hint "Run: sudo phobos drive disable"
         return 1
     fi
 
@@ -82,7 +82,7 @@ drive_disable() {
     systemctl daemon-reload
     udevadm control --reload-rules
 
-    echo "PHOBOS drive trigger disabled."
+    success "PHOBOS drive trigger disabled."
 }
 
 drive_status() {
@@ -90,32 +90,31 @@ drive_status() {
     local service_file="/etc/systemd/system/phobos-drive-trigger.service"
     local udev_file="/etc/udev/rules.d/99-phobos-drive.rules"
 
-    echo "PHOBOS drive trigger"
-    echo "--------------------"
+    header "PHOBOS drive trigger"
 
     # if a service file exists, the service is active
     if [[ -f "$service_file" ]]; then
-        echo "Service:     installed"
+        field "Service:" "installed" "$C_GREEN"
     else
-        echo "Service:     not installed"
+        field "Service:" "not installed" "$C_GRAY"
     fi
 
     # if a udev_file exits, the udev rules are installed
     if [[ -f "$udev_file" ]]; then
-        echo "udev rule:   installed"
+        field "udev rule:" "installed" "$C_GREEN"
     else
-        echo "udev rule:   not installed"
+        field "udev rule:" "not installed" "$C_GRAY"
     fi
 
     # if both files exist, the integration is enabled
     if [[ -f "$service_file" && -f "$udev_file" ]]; then
-        echo "Integration: enabled"
+        field "Integration:" "enabled" "$C_GREEN"
     else
-        echo "Integration: disabled"
+        field "Integration:" "disabled" "$C_GRAY"
     fi
 
     echo ""
-    echo "Last service runs:"
+    printf '%sLast service runs:%s\n' "$C_BOLD" "$C_RESET"
     # pipeline
     # showing log-entries of this service
     # -n 5 : only the last 5
@@ -125,6 +124,6 @@ drive_status() {
     if journalctl -u phobos-drive-trigger.service -n 5 --no-pager 2>/dev/null | grep -q "phobos-drive-trigger.service"; then
         journalctl -u phobos-drive-trigger.service -n 5 --no-pager
     else
-        echo "No service execution recorded."
+        hint "No service execution recorded."
     fi
 }

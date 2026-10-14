@@ -7,7 +7,9 @@ save_folder() {
     # -z means, if the string is empty
     # if so, the parameters are not given correctly
     if [[ -z "$source_dir" || -z "$backup_dir" ]]; then
-        echo "Usage: phobos save_dir <quelle> <backup>"
+        error "Missing arguments."
+        printf '\n%sUsage:%s\n' "$C_BOLD" "$C_RESET"
+        printf '  %sphobos save <source> <backup>%s\n' "$C_CYAN" "$C_RESET"
         # ends function
         return 1
     fi
@@ -15,7 +17,7 @@ save_folder() {
     # -d means, if path exists and if it is a directory
     # checks if path source directory exists
     if [[ ! -d "$source_dir" ]]; then
-        echo "source directory not found: $source_dir"
+        error "Source directory not found: $source_dir"
         return 1
     fi
 
@@ -122,12 +124,16 @@ save_folder() {
     
     #display summary
     echo ""
-    echo "Backup finished"
-    echo "Files:    $total"
-    echo "Changed:  $changed"
-    echo "Skipped:  $skipped"
-    echo "Errors:   $errors"
-    echo "Duration: ${duration}ms"
+    header "Backup finished"
+    field "Files:"    "$total"
+    field "Changed:"  "$changed" "$C_GREEN"
+    field "Skipped:"  "$skipped" "$C_GRAY"
+    if (( errors > 0 )); then
+        field "Errors:" "$errors" "$C_RED"
+    else
+        field "Errors:" "$errors"
+    fi
+    field "Duration:" "${duration}ms" "$C_CYAN"
 
     # if there was an error with a single file, the parentfunction shall also return an error
     if (( errors > 0 )); then
@@ -145,7 +151,7 @@ save_file() {
 
     # is provided file a existing normal file?
     if [[ ! -f "$source" ]]; then
-        echo "File not found: $source"
+        error "File not found: $source"
 
         # return 1 menas that an error occurred
         # this status will later be counted by save_folder()
@@ -201,7 +207,7 @@ save_file() {
             # compares hash of source file with hash stored in backup
             # if hashes are identically there is no need for a new backup
             if [[ "$source_hash" == "$backup_hash" ]]; then
-                echo "Unchanged: $source"
+                info "Unchanged: $source"
                 # return 0 means that the file was successfully checked
                 # but no new backup was necessary because the file is unchanged
                 # save_folder() uses this status to increase "skipped" counter
@@ -210,7 +216,7 @@ save_file() {
         fi
     fi
 
-    echo "Sichere: $source"
+    info "Sichere: $source"
 
     local compressed
     #mktemp creates temorary file
@@ -263,7 +269,7 @@ ORIGINAL_SIZE=$original_size"
     # remvoe temporary file
     rm -f "$compressed"
 
-    echo "Erstellt: $container"
+    success "Erstellt: $container"
     # retunr 2 means, file was successfully backed up 
     # either because the backup did nit exist yet
     # or because source file had changed
