@@ -5,6 +5,7 @@
 readonly LOGGER_DIR
 readonly EVENT_LOG="$LOGGER_DIR/events.log"
 readonly LOGGER_CHAIN_FILE="$LOGGER_DIR/chain.hash"
+readonly LOGGER_NET_STATE_DIR="$LOGGER_DIR/net"  # [NEW] per-interface byte baselines
 
 # udev integration paths (used by lifecycle.sh).
 readonly LOGGER_UDEV_RULES="/etc/udev/rules.d/98-phobos-logger.rules"
@@ -19,6 +20,9 @@ readonly LOGGER_AUDIT_RULES="/etc/audit/rules.d/50-phobos-file.rules"  # where l
 readonly LOGGER_AUDIT_UNIT="/etc/systemd/system/phobos-logger-audit.service" # path of systemd unit that streams audot records into logger
 readonly LOGGER_AUDIT_HELPER="${LIB_DIR:-/usr/local/lib/phobos}/logger/logger_audit.sh" #absolute path of entry point logger_audit.sh
 readonly LOGGER_AUDIT_LOG="/var/log/audit/audit.log" #raw auditd log the collector streams (tail -F)  # [NEW]
+
+# permission/ownership/ACL audit rules (separate key from file rules).
+readonly LOGGER_PERMISSION_RULES="/etc/audit/rules.d/51-phobos-permission.rules"
 
 logger_storage_init() {
     # creating diredctory for logger file
@@ -55,6 +59,18 @@ logger_storage_init() {
     # make file private, so only owner can read, write
     chmod 600 "$LOGGER_CHAIN_FILE" || {
         logger_error "Failed to secure chain file."
+        return 1
+    }
+
+    # per-interface network state directory (byte-counter baselines)
+    mkdir -p "$LOGGER_NET_STATE_DIR" || {
+        logger_error "Failed to create network state directory."
+        return 1
+    }
+
+    # make dir private, so only owner can read, write, execute
+    chmod 700 "$LOGGER_NET_STATE_DIR" || {
+        logger_error "Failed to secure network state directory."
         return 1
     }
 

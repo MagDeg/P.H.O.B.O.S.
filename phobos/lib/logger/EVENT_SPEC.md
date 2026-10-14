@@ -520,6 +520,7 @@ primarily for testing):
 - `LOGGER_DIR` — `/var/lib/phobos/logger` (mode `700`)
 - `events.log` — the event log (mode `600`)
 - `chain.hash` — current chain tip (mode `600`)
+- `net/` — per-interface network byte-counter baselines (mode `700`)
 
 ---
 
@@ -543,6 +544,28 @@ entry point and sources them all:
 - `collector/collector_sudo.sh` — `logger_collect_sudo`
 - `collector/collector_journal.sh` — `logger_collect_journal_line` (router; first
   match wins)
+- `collector/collector_user.sh` — `logger_collect_user` maps `useradd`/`userdel`/
+  `usermod`/`passwd`/`chsh`/`chfn` and `groupadd`/`groupdel`/`gpasswd` messages to
+  `USER` events (`USER_CREATED`/`USER_DELETED`/`USER_MODIFIED`/`GROUP_ADDED`/
+  `GROUP_REMOVED`). The actor is not present in the short journal format, so the
+  affected account is recorded in `target` (`user:<name>`/`group:<name>`) and
+  `user` is `SYSTEM`.
+- `collector/collector_system.sh` — `logger_collect_system` maps `systemd`
+  messages to `SYSTEM` events: `Startup finished` → `BOOT`, `Shutting down` →
+  `SHUTDOWN`, `Rebooting` → `REBOOT`, `Started`/`Stopped <unit>` →
+  `SERVICE_STARTED`/`SERVICE_STOPPED`, `Reloading`/`Reloaded` → `CONFIG_CHANGED`.
+  All units are recorded.
+- `collector/collector_network.sh` — `logger_collect_network` maps
+  NetworkManager / `wpa_supplicant` / `systemd-networkd` messages to `NETWORK`
+  `CONNECTION`/`DISCONNECTION` events. The WiFi SSID is captured in `target`. A
+  per-interface state file under `$LOGGER_DIR/net` records the byte counters at
+  connect time; on disconnect the `rx_bytes`/`tx_bytes` deltas are added to
+  `details`. The state file also deduplicates the overlapping sources. Volume is
+  approximate and unavailable if the collector restarts mid-connection.
+- `collector/collector_process.sh` — `logger_collect_process` maps kernel crash
+  messages (`segfault`, `traps:` general protection fault, OOM killer, kernel
+  BUG, paging request, panic) to `PROCESS` `CRASH` events. Process `START`/`STOP`
+  are intentionally not tracked (very high volume; see §18).
 - `collector/collector_audit.sh` — `logger_collect_audit_block` maps a coalesced
   audit block to a single `FILE` event (`CREATE`/`DELETE`/`MOVE`/`RENAME`/
   `MODIFY`). Source/target are taken from `PATH` records by `nametype`
@@ -551,6 +574,11 @@ entry point and sources them all:
   whose `PATH` record is `nametype=NORMAL` means the file already existed and
   was modified in place (`MODIFY`). Actors are limited to real users
   (`auid>=1000`) and the sudo helper's own file operations are ignored.
+- `collector/collector_audit.sh` also maps blocks with the `phobos-permission`
+  key to a `PERMISSION` event: `chmod`/`fchmod`/`fchmodat` →
+  `PERMISSION_CHANGED`, `chown`/`fchown`/`lchown`/`fchownat` → `OWNER_CHANGED`,
+  `setxattr`/`lsetxattr`/`fsetxattr` → `ACL_CHANGED`. The affected path is taken
+  from the `PATH` record, the actor from the audit `auid`.
 
 Each channel has an entry point that feeds the collectors:
 
@@ -564,8 +592,10 @@ Each channel has an entry point that feeds the collectors:
   id, and flushes each block. The `phobos-logger-audit.service` unit (installed
   by `phobos logger enable`) runs
   `tail -F -n 0 /var/log/audit/audit.log | logger_audit.sh`. Rules are installed
-  to `/etc/audit/rules.d/50-phobos-file.rules` and loaded with `augenrules --load`.
-  A single block can be fed manually with `phobos logger ingest-audit "<block>"`.
+  to `/etc/audit/rules.d/50-phobos-file.rules` (key `phobos-file`) and
+  `/etc/audit/rules.d/51-phobos-permission.rules` (key `phobos-permission`) and
+  loaded with `augenrules --load`. A single block can be fed manually with
+  `phobos logger ingest-audit "<block>"`.
 
 Adding a new source means adding a file under `collector/` and sourcing it from
 `collector.sh` (and, for journal sources, adding it to the router in

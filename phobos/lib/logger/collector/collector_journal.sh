@@ -13,6 +13,10 @@ logger_collect_journal_line() {
     # if collector returns 0 (recognized) stop
     logger_collect_sudo "$line" && return 0
     logger_collect_auth "$line" && return 0
+    logger_collect_user "$line" && return 0 
+    logger_collect_system "$line" && return 0
+    logger_collect_network "$line" && return 0
+    logger_collect_process "$line" && return 0  
 
     return 0
 }

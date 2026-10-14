@@ -19,6 +19,19 @@ declare -A LOGGER_AUDIT_SYSCALLS_AARCH64=(
     [37]=linkat [36]=symlinkat
 )
 
+# permission/ownership/ACL syscalls -> name, per architecture.
+# used for the key=phobos-permission audit rules.
+declare -A LOGGER_AUDIT_PERM_SYSCALLS_X86_64=(
+    [90]=chmod [91]=fchmod [268]=fchmodat [452]=fchmodat2
+    [92]=chown [93]=fchown [94]=lchown [260]=fchownat
+    [188]=setxattr [189]=lsetxattr [190]=fsetxattr
+)
+declare -A LOGGER_AUDIT_PERM_SYSCALLS_AARCH64=(
+    [52]=fchmod [53]=fchmodat [452]=fchmodat2
+    [55]=fchown [54]=fchownat
+    [5]=setxattr [6]=lsetxattr [7]=fsetxattr
+)
+
 # prints the syscall name for number $1 on the current architecture,
 # or nothing when the number is unknown.
 logger_audit_syscall_name() {
@@ -36,6 +49,66 @@ logger_audit_syscall_name() {
             printf '%s' ""
             ;;
     esac
+}
+
+# prints permission syscall name for number $1 on current
+# architecture, or nothing when number is unknown.
+logger_audit_perm_syscall_name() {
+    local num="$1"
+
+    case "$(uname -m)" in
+        x86_64|i386|i686)
+            printf '%s' "${LOGGER_AUDIT_PERM_SYSCALLS_X86_64[$num]:-}"
+            ;;
+        aarch64|arm64)
+            printf '%s' "${LOGGER_AUDIT_PERM_SYSCALLS_AARCH64[$num]:-}"
+            ;;
+        *)
+            printf '%s' ""
+            ;;
+    esac
+}
+
+# maps a permission syscall number to its PERMISSION action, or returns
+# 1 when the syscall is not a permission change.
+_logger_audit_permission_action() {
+    local name
+    name="$(logger_audit_perm_syscall_name "$1")"
+
+    case "$name" in
+        chmod|fchmod|fchmodat|fchmodat2)
+            printf '%s' "PERMISSION_CHANGED"
+            ;;
+        chown|fchown|lchown|fchownat)
+            printf '%s' "OWNER_CHANGED"
+            ;;
+        setxattr|lsetxattr|fsetxattr)
+            printf '%s' "ACL_CHANGED"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# resolves an audit auid to a user name, falling back to SYSTEM for
+# unset/special ids and to raw id when user no longer exists.
+_logger_audit_resolve_user() {
+    local auid="$1"
+    local resolved
+
+    if [[ -z "$auid" || "$auid" == "4294967295" || "$auid" == "unset" ]]; then
+        printf '%s' "SYSTEM"
+        return 0
+    fi
+
+    resolved="$(getent passwd "$auid" 2>/dev/null | cut -d: -f1)"
+    if [[ -n "$resolved" ]]; then
+        printf '%s' "$resolved"
+    else
+        printf '%s' "$auid"
+    fi
+    return 0
 }
 
 # extracts the value of key $2 from an audit record line $1.
@@ -131,6 +204,50 @@ logger_collect_audit_block() {
                 ;;
         esac
     done <<< "$block"
+
+    # permission/ownership/ACL changes (key=phobos-permission)
+    # dispatched before the FILE handling below; reuses the parsed fields.
+    if [[ "$audit_key" == "phobos-permission" ]]; then
+        local perm_action
+        perm_action="$(_logger_audit_permission_action "$syscall_num")" || return 1
+
+        # skip the sudo helper's own bookkeeping files
+        if [[ "$comm" == "sudo" || "${exe##*/}" == "sudo" ]]; then
+            return 1
+        fi
+
+        local perm_source
+        perm_source="$(_logger_audit_path_first path_names path_ntypes)"
+        [[ -n "$perm_source" ]] || perm_source="$(_logger_audit_path_by_type NORMAL path_names path_ntypes)"
+        [[ -n "$perm_source" ]] || return 1
+
+        if [[ "$perm_source" != /* && -n "$cwd" ]]; then
+            perm_source="$cwd/$perm_source"
+        fi
+
+        local perm_user
+        perm_user="$(_logger_audit_resolve_user "$auid")"
+
+        local perm_status="SUCCESS"
+        [[ "$success" == "no" ]] && perm_status="FAILED"
+
+        local perm_name
+        perm_name="$(logger_audit_perm_syscall_name "$syscall_num")"
+
+        local perm_details="syscall=$perm_name exe=$exe pid=$pid"
+        [[ -n "$comm" ]] && perm_details+=" comm=$comm"
+        [[ -n "$audit_key" ]] && perm_details+=" key=$audit_key"
+
+        logger_event \
+            "PERMISSION" \
+            "$perm_action" \
+            "$perm_user" \
+            "$perm_status" \
+            "MEDIUM" \
+            --source "$perm_source" \
+            --details "$perm_details"
+        return $?
+    fi
 
     # only handle events produced by the PHOBOS rules (key=phobos-file)  # [NEW]
     [[ "$audit_key" == "phobos-file" ]] || return 1  # [NEW]

@@ -16,5 +16,9 @@ source "$collector_dir/collector_auth.sh"
 source "$collector_dir/collector_sudo.sh" 
 source "$collector_dir/collector_journal.sh"
 source "$collector_dir/collector_audit.sh"  
+source "$collector_dir/collector_user.sh" 
+source "$collector_dir/collector_system.sh" 
+source "$collector_dir/collector_network.sh" 
+source "$collector_dir/collector_process.sh"  
 
 unset collector_dir 

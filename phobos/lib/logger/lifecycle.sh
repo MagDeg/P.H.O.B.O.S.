@@ -83,6 +83,28 @@ EOF
     # user can read, write, all others only read  
     chmod 644 "$LOGGER_AUDIT_RULES" 
 
+    # permission-change monitoring (auditd)
+    # chmod/chown/setxattr by real users; syscall names are arch-aware because
+    # chmod/lchown/chown do not exist on aarch64 (only their *at / f* forms do).
+    local perm_chmod="chmod,fchmod,fchmodat"
+    local perm_chown="chown,fchown,lchown,fchownat"
+    case "$(uname -m)" in
+        aarch64|arm64)
+            perm_chmod="fchmod,fchmodat"
+            perm_chown="fchown,fchownat"
+            ;;
+    esac
+    mkdir -p "$(dirname "$LOGGER_PERMISSION_RULES")"
+    cat > "$LOGGER_PERMISSION_RULES" << EOF
+## PHOBOS logger - permission/ownership/ACL changes by real users (auid>=1000)
+-a always,exit -F arch=b64 -S $perm_chmod -F auid>=1000 -F auid!=unset -k phobos-permission
+-a always,exit -F arch=b64 -S $perm_chown -F auid>=1000 -F auid!=unset -k phobos-permission
+-a always,exit -F arch=b64 -S setxattr,lsetxattr,fsetxattr -F auid>=1000 -F auid!=unset -k phobos-permission
+EOF
+
+    # user can read, write, all others only read
+    chmod 644 "$LOGGER_PERMISSION_RULES"
+
     # audit collector service 
     # feeds audit records (file operations) into the logger
     cat > "$LOGGER_AUDIT_UNIT" << EOF
@@ -144,6 +166,9 @@ logger_disable() {
     [[ -f "$LOGGER_AUDIT_RULES" ]] && rm -f "$LOGGER_AUDIT_RULES" 
     rm -f "$LOGGER_AUDIT_UNIT"
 
+    # remove permission rules and unload them from the kernel
+    [[ -f "$LOGGER_PERMISSION_RULES" ]] && rm -f "$LOGGER_PERMISSION_RULES"
+
     # reload udev-rules
     udevadm control --reload-rules
 
@@ -152,10 +177,11 @@ logger_disable() {
         augenrules --load &> /dev/null
     fi 
 
-    # unload the still-active rules from the kernel (only ours, by key)  # [NEW]
-    if command -v auditctl &> /dev/null; then  # [NEW]
-        auditctl -D -k phobos-file &> /dev/null  # [NEW]
-    fi  # [NEW]
+    # unload the still-active rules from the kernel (only ours, by key)
+    if command -v auditctl &> /dev/null; then  
+        auditctl -D -k phobos-file &> /dev/null 
+        auditctl -D -k phobos-permission &> /dev/null
+    fi  
 
     if command -v systemctl &> /dev/null; then
         systemctl daemon-reload
@@ -193,6 +219,15 @@ logger_status() {
         echo "File monitoring:   installed (inactive)"  
     else
         echo "File monitoring:   disabled"
+    fi
+
+    # permission monitoring runs on the same audit service
+    if [[ -f "$LOGGER_PERMISSION_RULES" ]] && command -v systemctl &> /dev/null && systemctl is-active --quiet phobos-logger-audit.service; then
+        echo "Permission mon.:   active"
+    elif [[ -f "$LOGGER_PERMISSION_RULES" ]]; then
+        echo "Permission mon.:   installed (inactive)"
+    else
+        echo "Permission mon.:   disabled"
     fi
 
     if [[ -d "$LOGGER_DIR" ]]; then
